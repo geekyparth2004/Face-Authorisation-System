@@ -1,8 +1,7 @@
 import cv2
-import face_recognition
 import numpy as np
-import pickle
 import os
+import pickle
 
 # File to store registered faces
 DATA_FILE = "face_data.pkl"
@@ -15,24 +14,32 @@ else:
     known_face_encodings = []
     known_face_names = []
 
+# Load Haar Cascade for face detection
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+
+def detect_faces(frame):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+    return faces
+
 def register_face():
     cap = cv2.VideoCapture(0)
     print("Please look at the camera for face detection...")
 
     while True:
         ret, frame = cap.read()
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        faces = detect_faces(frame)
 
-        # Detect face locations
-        face_locations = face_recognition.face_locations(rgb_frame)
-        if face_locations:
-            face_encoding = face_recognition.face_encodings(rgb_frame, face_locations)[0]
-            cv2.imshow("Face Detected", frame)
+        if len(faces) > 0:
+            (x, y, w, h) = faces[0]  # Take the first detected face
+            face_roi = frame[y:y+h, x:x+w]
+            cv2.imshow("Face Detected", face_roi)
             cv2.waitKey(1000)
             cap.release()
             cv2.destroyAllWindows()
 
             name = input("Enter your name: ")
+            face_encoding = cv2.resize(face_roi, (100, 100)).flatten()  # Resize and flatten the face image
             known_face_encodings.append(face_encoding)
             known_face_names.append(name)
             print(f"Thank you, {name}! You have been registered.")
@@ -56,24 +63,29 @@ def scan_face():
 
     while True:
         ret, frame = cap.read()
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        faces = detect_faces(frame)
 
-        # Detect face locations and encodings
-        face_locations = face_recognition.face_locations(rgb_frame)
-        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+        for (x, y, w, h) in faces:
+            face_roi = frame[y:y+h, x:x+w]
+            face_encoding = cv2.resize(face_roi, (100, 100)).flatten()  # Resize and flatten the face image
 
-        for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-            matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+            # Compare with known faces
+            min_dist = float("inf")
             name = "Unknown"
 
-            if True in matches:
-                first_match_index = matches.index(True)
-                name = known_face_names[first_match_index]
+            for i, known_encoding in enumerate(known_face_encodings):
+                dist = np.linalg.norm(face_encoding - known_encoding)  # Euclidean distance
+                if dist < min_dist:
+                    min_dist = dist
+                    name = known_face_names[i]
+
+            if min_dist < 5000:  # Threshold for recognition
                 print(f"Welcome, {name}!")
-                # Draw a rectangle around the face
-                cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-                # Display the name
-                cv2.putText(frame, name, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                cv2.putText(frame, name, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            else:
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 0, 255), 2)
+                cv2.putText(frame, "Unknown", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
 
             cv2.imshow("Face Recognition", frame)
 
