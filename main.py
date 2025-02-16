@@ -17,10 +17,18 @@ else:
 # Load Haar Cascade for face detection
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
+# Fixed size for face encodings
+FACE_ENCODING_SIZE = (100, 100)  # Resize all faces to 100x100 pixels
+
 def detect_faces(frame):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
     return faces
+
+def normalize_encoding(encoding):
+    # Normalize the encoding to have zero mean and unit variance
+    encoding = (encoding - np.mean(encoding)) / np.std(encoding)
+    return encoding
 
 def register_face():
     cap = cv2.VideoCapture(0)
@@ -33,13 +41,17 @@ def register_face():
         if len(faces) > 0:
             (x, y, w, h) = faces[0]  # Take the first detected face
             face_roi = frame[y:y+h, x:x+w]
+            face_gray = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
+            face_resized = cv2.resize(face_gray, FACE_ENCODING_SIZE)  # Resize to a fixed size
+            face_encoding = face_resized.flatten()  # Flatten the image
+            face_encoding = normalize_encoding(face_encoding)  # Normalize the encoding
+
             cv2.imshow("Face Detected", face_roi)
             cv2.waitKey(1000)
             cap.release()
             cv2.destroyAllWindows()
 
             name = input("Enter your name: ")
-            face_encoding = cv2.resize(face_roi, (100, 100)).flatten()  # Resize and flatten the face image
             known_face_encodings.append(face_encoding)
             known_face_names.append(name)
             print(f"Thank you, {name}! You have been registered.")
@@ -67,7 +79,10 @@ def scan_face():
 
         for (x, y, w, h) in faces:
             face_roi = frame[y:y+h, x:x+w]
-            face_encoding = cv2.resize(face_roi, (100, 100)).flatten()  # Resize and flatten the face image
+            face_gray = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
+            face_resized = cv2.resize(face_gray, FACE_ENCODING_SIZE)  # Resize to a fixed size
+            face_encoding = face_resized.flatten()  # Flatten the image
+            face_encoding = normalize_encoding(face_encoding)  # Normalize the encoding
 
             # Compare with known faces
             min_dist = float("inf")
@@ -79,7 +94,7 @@ def scan_face():
                     min_dist = dist
                     name = known_face_names[i]
 
-            if min_dist < 5000:  # Threshold for recognition
+            if min_dist < 100:  # Adjusted threshold for recognition
                 print(f"Welcome, {name}!")
                 cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
                 cv2.putText(frame, name, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
